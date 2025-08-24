@@ -94,7 +94,9 @@ func (m *Manager) ExecuteFunction(ctx context.Context, functionID, payload strin
 		return nil, fmt.Errorf("function '%s' is not in a running state", functionID)
 	}
 
-	workerURL := fmt.Sprintf("http://localhost:%d", fn.HostPort)
+	// Use Kubernetes service DNS name instead of localhost
+	workerServiceName := fmt.Sprintf("service-%s", functionID)
+	workerURL := fmt.Sprintf("http://%s.scadable-faas.svc.cluster.local:80", workerServiceName)
 	reqBody := fmt.Sprintf(`{"payload": %q}`, payload)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", workerURL, strings.NewReader(reqBody))
