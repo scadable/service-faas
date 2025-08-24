@@ -3,6 +3,9 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"service-faas/internal/config"
 	"service-faas/internal/core/functions" // Import the functions package
 
@@ -54,6 +57,19 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 		"func": funcID,
 	}
 
+	// Read the actual Python code from the file
+	handlerFilePath := filepath.Join(codePath, "handler.py")
+	handlerFile, err := os.Open(handlerFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open handler file: %w", err)
+	}
+	defer handlerFile.Close()
+	
+	handlerCode, err := io.ReadAll(handlerFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read handler file: %w", err)
+	}
+
 	// Create a ConfigMap to store the handler code
 	configMap := &apiv1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -61,7 +77,7 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 			Namespace: faasNamespace,
 		},
 		Data: map[string]string{
-			"handler.py": codePath, // The codePath now contains the actual code
+			"handler.py": string(handlerCode), // Store the actual Python code content
 		},
 	}
 	_, err := c.clientset.CoreV1().ConfigMaps(faasNamespace).Create(ctx, configMap, metav1.CreateOptions{})
