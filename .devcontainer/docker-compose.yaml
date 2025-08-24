@@ -1,0 +1,18 @@
+
+services:
+  # The database for our FaaS manager
+  db:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: faasdb
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Expose the port for local debugging
+
+
+volumes:
+  db-data:

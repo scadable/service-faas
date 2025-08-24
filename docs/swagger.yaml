@@ -1,0 +1,140 @@
+definitions:
+  functions.Function:
+    properties:
+      container_id:
+        type: string
+      container_name:
+        type: string
+      created_at:
+        type: string
+      function_name:
+        description: The name of the function in the .py file
+        type: string
+      handler_path:
+        description: e.g., handler.handle
+        type: string
+      host_port:
+        description: The port on the host mapped to the container
+        type: integer
+      id:
+        type: string
+      status:
+        description: e.g., "creating", "running", "stopped", "error"
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /functions:
+    get:
+      description: Retrieves a list of all registered functions.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/functions.Function'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: List all functions
+      tags:
+      - functions
+    post:
+      consumes:
+      - multipart/form-data
+      description: Uploads a Python file, creates a new FaaS function container, and
+        returns its details.
+      parameters:
+      - description: The Python file containing the function handler
+        in: formData
+        name: python_file
+        required: true
+        type: file
+      - description: The name of the function to execute (e.g., 'handle')
+        in: formData
+        name: function_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/functions.Function'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Add a new function
+      tags:
+      - functions
+  /functions/{functionID}:
+    delete:
+      description: Stops the function's container and removes its record from the
+        database.
+      parameters:
+      - description: Function ID
+        in: path
+        name: functionID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Remove a function
+      tags:
+      - functions
+  /functions/{functionID}/execute:
+    post:
+      consumes:
+      - application/json
+      description: Sends a JSON payload to a function and returns the result.
+      parameters:
+      - description: Function ID
+        in: path
+        name: functionID
+        required: true
+        type: string
+      - description: Payload for the function
+        in: body
+        name: body
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"result": "..."}'
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Execute a function
+      tags:
+      - functions
+swagger: "2.0"

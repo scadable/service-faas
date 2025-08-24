@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 type Handler struct {
@@ -24,6 +25,7 @@ func NewHandler(mgr *functions.Manager, lg zerolog.Logger) http.Handler {
 
 	h := &Handler{mgr: mgr, lg: lg}
 
+	// --- API Routes ---
 	r.Route("/functions", func(r chi.Router) {
 		r.Post("/", h.handleAddFunction)
 		r.Get("/", h.handleListFunctions)
@@ -31,10 +33,25 @@ func NewHandler(mgr *functions.Manager, lg zerolog.Logger) http.Handler {
 		r.Delete("/{functionID}", h.handleRemoveFunction)
 	})
 
+	// --- Swagger Docs Route ---
+	r.Get("/docs", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/docs/index.html", http.StatusMovedPermanently)
+	})
+	r.Get("/docs/*", httpSwagger.WrapHandler)
 	return r
 }
 
-// handleAddFunction handles uploading a .py file and creating a function.
+// @Summary      Add a new function
+// @Description  Uploads a Python file, creates a new FaaS function container, and returns its details.
+// @Tags         functions
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        python_file    formData  file   true   "The Python file containing the function handler"
+// @Param        function_name  formData  string true   "The name of the function to execute (e.g., 'handle')"
+// @Success      201  {object}  functions.Function
+// @Failure      400  {string}  string "Bad Request"
+// @Failure      500  {string}  string "Internal Server Error"
+// @Router       /functions [post]
 func (h *Handler) handleAddFunction(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB max
 		http.Error(w, `{"error": "invalid form data"}`, http.StatusBadRequest)
@@ -62,7 +79,17 @@ func (h *Handler) handleAddFunction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, fn)
 }
 
-// handleExecuteFunction runs a function with a given payload.
+// @Summary      Execute a function
+// @Description  Sends a JSON payload to a function and returns the result.
+// @Tags         functions
+// @Accept       json
+// @Produce      json
+// @Param        functionID path string true "Function ID"
+// @Param        body body string true "Payload for the function"
+// @Success      200  {object}  object "{"result": "..."}"
+// @Failure      400  {string}  string "Bad Request"
+// @Failure      500  {string}  string "Internal Server Error"
+// @Router       /functions/{functionID}/execute [post]
 func (h *Handler) handleExecuteFunction(w http.ResponseWriter, r *http.Request) {
 	functionID := chi.URLParam(r, "functionID")
 	var req struct {
@@ -82,7 +109,13 @@ func (h *Handler) handleExecuteFunction(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]json.RawMessage{"result": result})
 }
 
-// handleListFunctions lists all created functions.
+// @Summary      List all functions
+// @Description  Retrieves a list of all registered functions.
+// @Tags         functions
+// @Produce      json
+// @Success      200  {array}   functions.Function
+// @Failure      500  {string}  string "Internal Server Error"
+// @Router       /functions [get]
 func (h *Handler) handleListFunctions(w http.ResponseWriter, r *http.Request) {
 	list, err := h.mgr.ListFunctions()
 	if err != nil {
@@ -93,7 +126,14 @@ func (h *Handler) handleListFunctions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
-// handleRemoveFunction deletes a function.
+// @Summary      Remove a function
+// @Description  Stops the function's container and removes its record from the database.
+// @Tags         functions
+// @Produce      json
+// @Param        functionID path string true "Function ID"
+// @Success      204  {string}  string "No Content"
+// @Failure      500  {string}  string "Internal Server Error"
+// @Router       /functions/{functionID} [delete]
 func (h *Handler) handleRemoveFunction(w http.ResponseWriter, r *http.Request) {
 	functionID := chi.URLParam(r, "functionID")
 	if err := h.mgr.RemoveFunction(r.Context(), functionID); err != nil {

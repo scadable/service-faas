@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"net/http" // Standard library http
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,9 +13,16 @@ import (
 	"service-faas/internal/core/functions"
 	api "service-faas/internal/delivery/http"
 
+	_ "service-faas/docs"
+
 	"github.com/rs/zerolog"
 )
 
+// @title           FaaS Manager API
+// @version         1.0
+// @description     API for managing and executing functions as a service.
+// @host            localhost:8080
+// @BasePath        /
 func main() {
 	log := zerolog.New(os.Stdout).With().Timestamp().
 		Str("svc", "service-faas").Logger()
