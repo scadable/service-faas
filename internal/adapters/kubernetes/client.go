@@ -14,6 +14,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
@@ -123,12 +124,12 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 							},
 							Resources: apiv1.ResourceRequirements{
 								Requests: apiv1.ResourceList{
-									apiv1.ResourceCPU:    "100m",
-									apiv1.ResourceMemory: "128Mi",
+									apiv1.ResourceCPU:    resource.MustParse("100m"),
+									apiv1.ResourceMemory: resource.MustParse("128Mi"),
 								},
 								Limits: apiv1.ResourceList{
-									apiv1.ResourceCPU:    "500m",
-									apiv1.ResourceMemory: "512Mi",
+									apiv1.ResourceCPU:    resource.MustParse("500m"),
+									apiv1.ResourceMemory: resource.MustParse("512Mi"),
 								},
 							},
 							VolumeMounts: []apiv1.VolumeMount{
