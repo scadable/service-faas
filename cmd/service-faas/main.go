@@ -9,6 +9,7 @@ import (
 
 	"service-faas/internal/adapters/docker"
 	"service-faas/internal/adapters/gorm"
+	"service-faas/internal/adapters/kubernetes"
 	"service-faas/internal/config"
 	"service-faas/internal/core/functions"
 	api "service-faas/internal/delivery/http"
@@ -37,22 +38,27 @@ func main() {
 		log.Fatal().Err(err).Msg("gorm connect")
 	}
 
-	// Conditionally initialize clients based on environment
-	var dcli *docker.Client
+	// Define an orchestrator interface
+	var orchestrator functions.Orchestrator
+
 	if cfg.DeploymentEnv == config.EnvDocker {
-		var err error
-		dcli, err = docker.New(cfg, log)
+		dcli, err := docker.New(cfg, log)
 		if err != nil {
 			log.Fatal().Err(err).Msg("docker client init")
 		}
+		orchestrator = dcli
 	} else if cfg.DeploymentEnv == config.EnvKubernetes {
-		// Placeholder for when you add the Kubernetes client
-		log.Fatal().Msg("kubernetes client not yet implemented")
+		kcli, err := kubernetes.New(cfg, log)
+		if err != nil {
+			log.Fatal().Err(err).Msg("kubernetes client init")
+		}
+		orchestrator = kcli
 	}
 
-	mgr := functions.NewManager(db, dcli, cfg, log)
+	mgr := functions.NewManager(db, orchestrator, cfg, log)
 
-	// On startup, restart any functions that were running before.
+	// ... (rest of the main function remains the same) ...
+
 	if err := mgr.RestartRunningFunctions(context.Background()); err != nil {
 		log.Error().Err(err).Msg("error during function restart")
 	}
@@ -60,7 +66,6 @@ func main() {
 	handler := api.NewHandler(mgr, log)
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: handler}
 
-	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(
 		context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -77,7 +82,6 @@ func main() {
 	log.Info().Msg("shutting down server...")
 	_ = srv.Shutdown(context.Background())
 
-	// Cleanup running containers
 	if err := mgr.CleanupAllFunctions(context.Background()); err != nil {
 		log.Error().Err(err).Msg("error during function cleanup")
 	}

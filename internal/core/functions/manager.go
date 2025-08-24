@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"service-faas/internal/adapters/docker"
 	"service-faas/internal/config"
 	"service-faas/pkg/rand"
 	"strings"
@@ -19,18 +18,18 @@ import (
 )
 
 type Manager struct {
-	db     *gorm.DB
-	docker *docker.Client
-	cfg    config.Config
-	lg     zerolog.Logger
+	db           *gorm.DB
+	orchestrator Orchestrator
+	cfg          config.Config
+	lg           zerolog.Logger
 }
 
-func NewManager(db *gorm.DB, dcli *docker.Client, cfg config.Config, lg zerolog.Logger) *Manager {
+func NewManager(db *gorm.DB, orch Orchestrator, cfg config.Config, lg zerolog.Logger) *Manager {
 	return &Manager{
-		db:     db,
-		docker: dcli,
-		cfg:    cfg,
-		lg:     lg.With().Str("component", "function-manager").Logger(),
+		db:           db,
+		orchestrator: orch,
+		cfg:          cfg,
+		lg:           lg.With().Str("component", "function-manager").Logger(),
 	}
 }
 
@@ -65,7 +64,7 @@ func (m *Manager) AddFunction(ctx context.Context, functionName string, code io.
 		return nil, fmt.Errorf("db create function record: %w", err)
 	}
 
-	runResult, err := m.docker.RunWorker(ctx, fn.ID, fn.CodePath, fn.HandlerPath)
+	runResult, err := m.orchestrator.RunWorker(ctx, fn.ID, fn.CodePath, fn.HandlerPath)
 	if err != nil {
 		m.lg.Error().Err(err).Str("function_id", fn.ID).Msg("failed to start container, rolling back")
 		fn.Status = "error"
@@ -78,7 +77,7 @@ func (m *Manager) AddFunction(ctx context.Context, functionName string, code io.
 	fn.Status = "running"
 	if err := m.db.Save(fn).Error; err != nil {
 		m.lg.Error().Err(err).Str("function_id", fn.ID).Msg("failed to save container details to db")
-		_ = m.docker.StopAndRemoveContainer(ctx, fn.ContainerID)
+		_ = m.orchestrator.StopAndRemoveContainer(ctx, fn.ContainerID)
 		return nil, err
 	}
 
@@ -143,7 +142,7 @@ func (m *Manager) RemoveFunction(ctx context.Context, functionID string) error {
 		return fmt.Errorf("function '%s' not found", functionID)
 	}
 
-	if err := m.docker.StopAndRemoveContainer(ctx, fn.ContainerID); err != nil {
+	if err := m.orchestrator.StopAndRemoveContainer(ctx, fn.ContainerID); err != nil {
 		m.lg.Warn().Err(err).Str("function_id", functionID).Msg("failed to stop container, proceeding with cleanup")
 	}
 
@@ -168,7 +167,7 @@ func (m *Manager) RestartRunningFunctions(ctx context.Context) error {
 
 	for _, fn := range runningFunctions {
 		m.lg.Info().Str("function_id", fn.ID).Msg("restarting function")
-		runResult, err := m.docker.RunWorker(ctx, fn.ID, fn.CodePath, fn.HandlerPath)
+		runResult, err := m.orchestrator.RunWorker(ctx, fn.ID, fn.CodePath, fn.HandlerPath)
 		if err != nil {
 			m.lg.Error().Err(err).Str("function_id", fn.ID).Msg("failed to restart function container")
 			fn.Status = "stopped"
@@ -192,7 +191,7 @@ func (m *Manager) CleanupAllFunctions(ctx context.Context) error {
 
 	for _, fn := range functions {
 		if fn.Status == "running" {
-			if err := m.docker.StopAndRemoveContainer(ctx, fn.ContainerID); err != nil {
+			if err := m.orchestrator.StopAndRemoveContainer(ctx, fn.ContainerID); err != nil {
 				m.lg.Error().Err(err).Str("function_id", fn.ID).Msg("failed during cleanup")
 			}
 		}
