@@ -4,12 +4,14 @@ import (
 	cr "crypto/rand"
 	"encoding/base32"
 	"io"
+	"strings"
 )
 
 func ID16() string {
 	var b [10]byte // 10 raw bytes → 16 base32 chars
 	_, _ = cr.Read(b[:])
-	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b[:])
+	// Convert to lowercase for Kubernetes resource name compatibility
+	return strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b[:]))
 }
 
 // Password generates a random alphanumeric password of a given length.
