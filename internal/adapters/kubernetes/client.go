@@ -11,8 +11,10 @@ import (
 
 	"github.com/rs/zerolog"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
@@ -120,6 +122,16 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 									ContainerPort: 8000,
 								},
 							},
+							Resources: apiv1.ResourceRequirements{
+								Requests: apiv1.ResourceList{
+									apiv1.ResourceCPU:    "100m",
+									apiv1.ResourceMemory: "128Mi",
+								},
+								Limits: apiv1.ResourceList{
+									apiv1.ResourceCPU:    "500m",
+									apiv1.ResourceMemory: "512Mi",
+								},
+							},
 							VolumeMounts: []apiv1.VolumeMount{
 								{
 									Name:      "handler-volume",
@@ -173,7 +185,73 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 		return nil, fmt.Errorf("failed to create service: %w", err)
 	}
 
-	c.lg.Info().Str("deployment", deploymentName).Msg("created kubernetes deployment and service")
+	// Create HPA for auto-scaling (1-20 replicas based on CPU usage)
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "hpa-" + funcID,
+			Namespace: faasNamespace,
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       deploymentName,
+			},
+			MinReplicas: int32Ptr(1),
+			MaxReplicas: 20,
+			Metrics: []autoscalingv2.MetricSpec{
+				{
+					Type: autoscalingv2.ResourceMetricSourceType,
+					Resource: &autoscalingv2.ResourceMetricSource{
+						Name: apiv1.ResourceCPU,
+						Target: autoscalingv2.MetricTarget{
+							Type:               autoscalingv2.UtilizationMetricType,
+							AverageUtilization: int32Ptr(70), // Scale up when CPU > 70%
+						},
+					},
+				},
+				{
+					Type: autoscalingv2.ResourceMetricSourceType,
+					Resource: &autoscalingv2.ResourceMetricSource{
+						Name: apiv1.ResourceMemory,
+						Target: autoscalingv2.MetricTarget{
+							Type:               autoscalingv2.UtilizationMetricType,
+							AverageUtilization: int32Ptr(80), // Scale up when Memory > 80%
+						},
+					},
+				},
+			},
+			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+				ScaleUp: &autoscalingv2.HPAScalingRules{
+					StabilizationWindowSeconds: int32Ptr(30), // Fast scale up
+					Policies: []autoscalingv2.HPAScalingPolicy{
+						{
+							Type:          autoscalingv2.PodsScalingPolicy,
+							Value:         2,
+							PeriodSeconds: 15,
+						},
+					},
+				},
+				ScaleDown: &autoscalingv2.HPAScalingRules{
+					StabilizationWindowSeconds: int32Ptr(120), // Slower scale down
+					Policies: []autoscalingv2.HPAScalingPolicy{
+						{
+							Type:          autoscalingv2.PodsScalingPolicy,
+							Value:         1,
+							PeriodSeconds: 60,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err = c.clientset.AutoscalingV2().HorizontalPodAutoscalers(faasNamespace).Create(ctx, hpa, metav1.CreateOptions{})
+	if err != nil && !errors.IsAlreadyExists(err) {
+		return nil, fmt.Errorf("failed to create HPA: %w", err)
+	}
+
+	c.lg.Info().Str("deployment", deploymentName).Msg("created kubernetes deployment, service, and HPA")
 
 	// ✅ FIX: Return a *functions.RunResult struct
 	return &functions.RunResult{
@@ -185,8 +263,15 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 // ... (StopAndRemoveContainer and int32Ptr methods remain the same) ...
 func (c *Client) StopAndRemoveContainer(ctx context.Context, containerID string) error {
 	deploymentName := containerID
-	serviceName := "service-" + containerID[len(appName)+1:]
-	configMapName := "handler-code-" + containerID[len(appName)+1:]
+	funcID := containerID[len(appName)+1:] // Extract function ID from container name
+	serviceName := "service-" + funcID
+	configMapName := "handler-code-" + funcID
+	hpaName := "hpa-" + funcID
+
+	// Delete HPA
+	if err := c.clientset.AutoscalingV2().HorizontalPodAutoscalers(faasNamespace).Delete(ctx, hpaName, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+		c.lg.Warn().Err(err).Str("hpa", hpaName).Msg("failed to delete HPA")
+	}
 
 	// Delete Deployment
 	deletePolicy := metav1.DeletePropagationForeground
