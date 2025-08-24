@@ -80,7 +80,7 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 			"handler.py": string(handlerCode), // Store the actual Python code content
 		},
 	}
-	_, err := c.clientset.CoreV1().ConfigMaps(faasNamespace).Create(ctx, configMap, metav1.CreateOptions{})
+	_, err = c.clientset.CoreV1().ConfigMaps(faasNamespace).Create(ctx, configMap, metav1.CreateOptions{})
 	if err != nil && !errors.IsAlreadyExists(err) {
 		return nil, fmt.Errorf("failed to create configmap: %w", err)
 	}
