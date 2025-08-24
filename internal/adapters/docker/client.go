@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"service-faas/internal/config"
+	"service-faas/internal/core/functions" // Import the functions package
 	"strconv"
 
 	"github.com/docker/docker/api/types/container"
@@ -24,12 +25,10 @@ type Client struct {
 	authHeader string
 }
 
-type RunResult struct {
-	ContainerID string
-	HostPort    int
-}
+// ✅ FIX: The local RunResult struct is removed.
 
 func New(cfg config.Config, lg zerolog.Logger) (*Client, error) {
+	// ... (constructor remains the same)
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -54,7 +53,8 @@ func New(cfg config.Config, lg zerolog.Logger) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath string) (*RunResult, error) {
+// ✅ FIX: The return type is changed to *functions.RunResult
+func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath string) (*functions.RunResult, error) {
 	name := "faas-worker-" + funcID
 
 	if err := c.ensureImage(ctx, c.cfg.WorkerImage); err != nil {
@@ -100,9 +100,11 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 		Int("host_port", hostPort).
 		Msg("worker container started")
 
-	return &RunResult{ContainerID: resp.ID, HostPort: hostPort}, nil
+	// ✅ FIX: Return a *functions.RunResult struct
+	return &functions.RunResult{ContainerID: resp.ID, HostPort: hostPort}, nil
 }
 
+// ... (StopAndRemoveContainer and ensureImage methods remain the same)
 func (c *Client) StopAndRemoveContainer(ctx context.Context, containerID string) error {
 	if containerID == "" {
 		return nil

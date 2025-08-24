@@ -4,8 +4,7 @@ import (
 	"context"
 	"fmt"
 	"service-faas/internal/config"
-	"strconv"
-	"time"
+	"service-faas/internal/core/functions" // Import the functions package
 
 	"github.com/rs/zerolog"
 	appsv1 "k8s.io/api/apps/v1"
@@ -28,12 +27,10 @@ type Client struct {
 	cfg       config.Config
 }
 
-type RunResult struct {
-	ContainerID string // In k8s, this can be the deployment name
-	HostPort    int    // The NodePort of the service
-}
+// ✅ FIX: The local RunResult struct is removed.
 
 func New(cfg config.Config, lg zerolog.Logger) (*Client, error) {
+	// ... (constructor remains the same)
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get in-cluster config: %w", err)
@@ -49,8 +46,8 @@ func New(cfg config.Config, lg zerolog.Logger) (*Client, error) {
 	}, nil
 }
 
-// RunWorker creates a Deployment and a Service for the FaaS function.
-func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath string) (*RunResult, error) {
+// ✅ FIX: The return type is changed to *functions.RunResult
+func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath string) (*functions.RunResult, error) {
 	deploymentName := appName + "-" + funcID
 	labels := map[string]string{
 		"app":  appName,
@@ -158,13 +155,14 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 
 	c.lg.Info().Str("deployment", deploymentName).Msg("created kubernetes deployment and service")
 
-	return &RunResult{
+	// ✅ FIX: Return a *functions.RunResult struct
+	return &functions.RunResult{
 		ContainerID: deploymentName,
 		HostPort:    int(createdService.Spec.Ports[0].NodePort),
 	}, nil
 }
 
-// StopAndRemoveContainer deletes the Deployment and Service.
+// ... (StopAndRemoveContainer and int32Ptr methods remain the same) ...
 func (c *Client) StopAndRemoveContainer(ctx context.Context, containerID string) error {
 	deploymentName := containerID
 	serviceName := "service-" + containerID[len(appName)+1:]
