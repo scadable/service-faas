@@ -10,7 +10,7 @@ import (
 	"strconv"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image" // Added import
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
@@ -54,17 +54,13 @@ func New(cfg config.Config, lg zerolog.Logger) (*Client, error) {
 	return c, nil
 }
 
-// RunWorker starts a new FaaS worker container.
 func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath string) (*RunResult, error) {
 	name := "faas-worker-" + funcID
 
-	// Ensure the image exists locally
 	if err := c.ensureImage(ctx, c.cfg.WorkerImage); err != nil {
 		return nil, err
 	}
 
-	// Ensure any old container with the same name is gone
-	// ✅ FIX: Use container.RemoveOptions
 	_ = c.cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
 
 	resp, err := c.cli.ContainerCreate(ctx,
@@ -76,9 +72,7 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 			ExposedPorts: nat.PortSet{"8000/tcp": struct{}{}},
 		},
 		&container.HostConfig{
-			// Mount the Python code directory into the container
 			Binds: []string{fmt.Sprintf("%s:/app/function", codePath)},
-			// Publish port 8000 to a random available port on the host
 			PortBindings: nat.PortMap{
 				"8000/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: ""}},
 			},
@@ -89,12 +83,10 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 		return nil, fmt.Errorf("docker create: %w", err)
 	}
 
-	// ✅ FIX: Use container.StartOptions
 	if err := c.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return nil, fmt.Errorf("docker start: %w", err)
 	}
 
-	// Inspect the container to get the dynamically assigned host port
 	inspect, err := c.cli.ContainerInspect(ctx, resp.ID)
 	if err != nil {
 		return nil, fmt.Errorf("docker inspect: %w", err)
@@ -111,13 +103,11 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 	return &RunResult{ContainerID: resp.ID, HostPort: hostPort}, nil
 }
 
-// StopAndRemoveContainer stops and removes a container by its ID.
 func (c *Client) StopAndRemoveContainer(ctx context.Context, containerID string) error {
 	if containerID == "" {
-		return nil // Nothing to do
+		return nil
 	}
 	c.lg.Info().Str("container_id", containerID).Msg("stopping and removing container")
-	// ✅ FIX: Use container.RemoveOptions
 	err := c.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{
 		Force:         true,
 		RemoveVolumes: true,
@@ -131,20 +121,18 @@ func (c *Client) StopAndRemoveContainer(ctx context.Context, containerID string)
 func (c *Client) ensureImage(ctx context.Context, img string) error {
 	_, _, err := c.cli.ImageInspectWithRaw(ctx, img)
 	if err == nil {
-		return nil // Image exists
+		return nil
 	}
 	if !client.IsErrNotFound(err) {
-		return fmt.Errorf("image inspect: %w", err) // Another error occurred
+		return fmt.Errorf("image inspect: %w", err)
 	}
 
 	c.lg.Info().Str("image", img).Msg("pulling image from registry")
-	// ✅ FIX: Use image.PullOptions
 	rc, err := c.cli.ImagePull(ctx, img, image.PullOptions{RegistryAuth: c.authHeader})
 	if err != nil {
 		return fmt.Errorf("image pull: %w", err)
 	}
 	defer rc.Close()
-	// You can optionally stream the pull output to logs
 	_, _ = io.Copy(io.Discard, rc)
 
 	return nil

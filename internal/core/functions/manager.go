@@ -34,7 +34,6 @@ func NewManager(db *gorm.DB, dcli *docker.Client, cfg config.Config, lg zerolog.
 	}
 }
 
-// AddFunction creates a new function, saves the code, and starts its container.
 func (m *Manager) AddFunction(ctx context.Context, functionName string, code io.Reader) (*Function, error) {
 	funcID := rand.ID16()
 	codeDir := filepath.Join(m.cfg.FunctionStorageDir, funcID)
@@ -42,7 +41,6 @@ func (m *Manager) AddFunction(ctx context.Context, functionName string, code io.
 		return nil, fmt.Errorf("create function dir: %w", err)
 	}
 
-	// Save the uploaded python file.
 	codeFilePath := filepath.Join(codeDir, "handler.py")
 	file, err := os.Create(codeFilePath)
 	if err != nil {
@@ -56,7 +54,7 @@ func (m *Manager) AddFunction(ctx context.Context, functionName string, code io.
 	fn := &Function{
 		ID:            funcID,
 		FunctionName:  functionName,
-		HandlerPath:   fmt.Sprintf("handler.%s", functionName),
+		HandlerPath:   fmt.Sprintf("function.handler.%s", functionName),
 		CodePath:      codeDir,
 		ContainerName: "faas-worker-" + funcID,
 		Status:        "creating",
@@ -67,12 +65,11 @@ func (m *Manager) AddFunction(ctx context.Context, functionName string, code io.
 		return nil, fmt.Errorf("db create function record: %w", err)
 	}
 
-	// Run the container
 	runResult, err := m.docker.RunWorker(ctx, fn.ID, fn.CodePath, fn.HandlerPath)
 	if err != nil {
 		m.lg.Error().Err(err).Str("function_id", fn.ID).Msg("failed to start container, rolling back")
 		fn.Status = "error"
-		m.db.Save(fn) // Save error status
+		m.db.Save(fn)
 		return nil, fmt.Errorf("start worker container: %w", err)
 	}
 
@@ -81,7 +78,6 @@ func (m *Manager) AddFunction(ctx context.Context, functionName string, code io.
 	fn.Status = "running"
 	if err := m.db.Save(fn).Error; err != nil {
 		m.lg.Error().Err(err).Str("function_id", fn.ID).Msg("failed to save container details to db")
-		// Attempt to stop the container if DB save fails
 		_ = m.docker.StopAndRemoveContainer(ctx, fn.ContainerID)
 		return nil, err
 	}
@@ -89,8 +85,6 @@ func (m *Manager) AddFunction(ctx context.Context, functionName string, code io.
 	return fn, nil
 }
 
-// ExecuteFunction sends a payload to a running function container.
-// The typo 'тimeout' has been corrected to 'timeout'.
 func (m *Manager) ExecuteFunction(ctx context.Context, functionID, payload string) (json.RawMessage, error) {
 	var fn Function
 	if err := m.db.First(&fn, "id = ?", functionID).Error; err != nil {
@@ -102,7 +96,7 @@ func (m *Manager) ExecuteFunction(ctx context.Context, functionID, payload strin
 	}
 
 	workerURL := fmt.Sprintf("http://localhost:%d", fn.HostPort)
-	reqBody := fmt.Sprintf(`{"payload": %q}`, payload) // Ensure payload is a valid JSON string
+	reqBody := fmt.Sprintf(`{"payload": %q}`, payload)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", workerURL, strings.NewReader(reqBody))
 	if err != nil {
@@ -135,7 +129,6 @@ func (m *Manager) ExecuteFunction(ctx context.Context, functionID, payload strin
 	return result.Result, nil
 }
 
-// ListFunctions retrieves all function records.
 func (m *Manager) ListFunctions() ([]Function, error) {
 	var functions []Function
 	if err := m.db.Find(&functions).Error; err != nil {
@@ -144,7 +137,6 @@ func (m *Manager) ListFunctions() ([]Function, error) {
 	return functions, nil
 }
 
-// RemoveFunction stops the container and cleans up resources.
 func (m *Manager) RemoveFunction(ctx context.Context, functionID string) error {
 	var fn Function
 	if err := m.db.First(&fn, "id = ?", functionID).Error; err != nil {
@@ -167,7 +159,6 @@ func (m *Manager) RemoveFunction(ctx context.Context, functionID string) error {
 	return nil
 }
 
-// RestartRunningFunctions is called on startup to restart any orphaned containers.
 func (m *Manager) RestartRunningFunctions(ctx context.Context) error {
 	m.lg.Info().Msg("restarting any previously running functions...")
 	var runningFunctions []Function
@@ -192,7 +183,6 @@ func (m *Manager) RestartRunningFunctions(ctx context.Context) error {
 	return nil
 }
 
-// CleanupAllFunctions stops all running containers on shutdown.
 func (m *Manager) CleanupAllFunctions(ctx context.Context) error {
 	m.lg.Info().Msg("cleaning up all function containers")
 	functions, err := m.ListFunctions()
