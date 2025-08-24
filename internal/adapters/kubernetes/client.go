@@ -85,6 +85,10 @@ func (c *Client) RunWorker(ctx context.Context, funcID, codePath, handlerPath st
 					Labels: labels,
 				},
 				Spec: apiv1.PodSpec{
+					ServiceAccountName: "faas-manager-sa",
+					ImagePullSecrets: []apiv1.LocalObjectReference{
+						{Name: "harbor-registry-secret"},
+					},
 					Containers: []apiv1.Container{
 						{
 							Name:  appName,
