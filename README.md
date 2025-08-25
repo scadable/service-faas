@@ -68,7 +68,7 @@ Uploads a Python file and deploys it as a new function.
   - `python_file`: The Python file containing your handler code.
   - `function_name`: The name of the function to be called inside your Python file (e.g., handle).
 
-## Example cURL Request:
+### Example cURL Request:
 
 ~~~Bash
 curl -X POST http://localhost:8080/functions \
@@ -82,7 +82,7 @@ Sends a payload to a deployed function for execution.
 - **Endpoint:** `POST /functions/{functionID}/execute`
 - **Request Body:** A JSON object with a single payload key containing the string data you want to send to the function.
 
-## Example cURL Request:
+### Example cURL Request:
 
 ~~~Bash
 curl -X POST http://localhost:8080/functions/your_function_id/execute \
@@ -94,7 +94,7 @@ curl -X POST http://localhost:8080/functions/your_function_id/execute \
 Retrieves a list of all currently managed functions.
 - **Endpoint:** `GET /functions`
 
-## Example cURL Request:
+### Example cURL Request:
 
 ~~~Bash
 curl http://localhost:8080/functions
@@ -104,7 +104,7 @@ curl http://localhost:8080/functions
 Stops the function's container/deployment and deletes its data.
 -** Endpoint:** `DELETE /functions/{functionID}`
 
-## Example cURL Request:
+### Example cURL Request:
 
 ~~~Bash
 curl -X DELETE http://localhost:8080/functions/your_function_id
