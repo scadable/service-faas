@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  # The name for our dedicated storage volume for the auth service.
+  name: postgres-faas-pvc
+  namespace: scadable-faas
+spec:
+  # This volume can be mounted as read-write by a single node.
+  accessModes:
+    - ReadWriteOnce
+  # Request 5 Gigabytes of storage space.
+  resources:
+    requests:
+      storage: 5Gi

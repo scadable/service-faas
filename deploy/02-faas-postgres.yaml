@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faas-postgres
+  namespace: scadable-faas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: faas-postgres
+  template:
+    metadata:
+      labels:
+        app: faas-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-faas-secret
+          env:
+            - name: POSTGRES_DB
+              value: "faasdb"
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+              subPath: postgres
+
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-faas-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: faas-postgres-svc
+  namespace: scadable-faas
+spec:
+  selector:
+    app: faas-postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432

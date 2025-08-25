@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-faas
+  namespace: scadable-faas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-faas
+  template:
+    metadata:
+      labels:
+        app: service-faas
+    spec:
+      serviceAccountName: faas-manager-sa
+      imagePullSecrets:
+        - name: harbor-registry-secret
+      containers:
+        - name: service-faas
+          image: wuo1g9bo.c1.bhs5.container-registry.ovh.net/scadable/service-faas:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DEPLOYMENT_ENV
+              value: "kubernetes"
+            # ✅ FIX: Set individual DB components instead of the full DSN
+            - name: POSTGRES_HOST
+              value: "faas-postgres-svc"
+            - name: POSTGRES_DB
+              value: "faasdb"
+            - name: LISTEN_ADDR
+              value: ":8080"
+            - name: WORKER_IMAGE
+              value: "wuo1g9bo.c1.bhs5.container-registry.ovh.net/scadable/worker-faas:latest"
+          envFrom:
+            # This correctly loads POSTGRES_USER and POSTGRES_PASSWORD
+            # into the container's environment from your secret.
+            - secretRef:
+                name: postgres-faas-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-faas-svc
+  namespace: scadable-faas
+spec:
+  selector:
+    app: service-faas
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
